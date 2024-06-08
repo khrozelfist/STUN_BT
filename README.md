@@ -2,11 +2,11 @@ Linux（特别是 OpenWrt，包括 WSL2）下通过 [NATMap](https://github.com/
 
 基于 BT 协议，利用 nftables 对数据包进行修改，不需要下载设备与 BT 软件的支持
 
-支持在主路由及旁路由（包括 WSL2 旁路由），支持 TCP + UDP，支持多 WAN（需自行修改脚本路径）
+支持在主路由及旁路由（包括 WSL2 旁路由）上运行，支持 TCP + UDP，支持多 WAN（需自行修改脚本路径）
 
 运行在主路由时通过 nftables 进行端口映射
 
-运行在旁路由时 通过 UPnP 请求映射规则，因此要求主路由开启 UPnP
+运行在旁路由时通过 UPnP 请求映射规则，因此要求主路由开启 UPnP
 
 需要安装 xxd，运行在旁路由时需要安装 miniupnpc
 
