@@ -126,7 +126,7 @@ if [ $DNAT = 0 ]; then
 fi
 
 # 代理失败，则启用本机 UPnP
-[ $DNAT = 0 ] && upnpc -i -e "STUN BT $L4PROTO $WANPORT->$LANPORT" -a @ $LANPORT $LANPORT $L4PROTO
+[ $DNAT = 0 ] && (upnpc -i -e "STUN BT $L4PROTO $WANPORT->$LANPORT" -a @ $LANPORT $LANPORT $L4PROTO; DNAT=4)
 
 # 初始化 DNAT 链
 if [ $DNAT != 3 ]; then
@@ -137,7 +137,7 @@ if [ $DNAT != 3 ]; then
 fi
 
 # BT 应用运行在路由器下，使用 dnat
-if [ $DNAT = 1 ]; then
+if [ $DNAT = 1 ] || [ $DNAT = 4 ]; then
 	nft add rule ip STUN BTDNAT_$L4PROTO $IIFNAME $L4PROTO dport $LANPORT counter dnat ip to $APPADDR:$APPPORT
 	if ! nft list chain inet fw4 forward | grep 'ct status dnat' >/dev/null; then
 		HANDLE=$(nft -a list chain inet fw4 forward | grep jump | awk 'NR==1{print$NF}')
@@ -149,7 +149,7 @@ fi
 if [ $DNAT = 2 ]; then
 	nft add rule ip STUN BTDNAT_$L4PROTO $IIFNAME $L4PROTO dport $LANPORT counter redirect to :$APPPORT
 	if ! nft list chain inet fw4 input | grep 'ct status dnat' >/dev/null; then
-		HANDLE=$(nft -a list chain inet fw4 input | grep jump | awk 'NR==1{print$NF}')
+		HANDLE=$(nft -a list chain inet fw4 input | grep jump | grep -v "tcp flags" | awk 'NR==1{print$NF}')
 		nft insert rule inet fw4 input handle $HANDLE ct status dnat counter accept
 	fi
 fi
