@@ -139,6 +139,7 @@ fi
 # BT 应用运行在路由器下，使用 dnat
 if [ $DNAT = 1 ] || [ $DNAT = 4 ]; then
 	nft add rule ip STUN BTDNAT_$L4PROTO $IIFNAME $L4PROTO dport $LANPORT counter dnat ip to $APPADDR:$APPPORT
+	[ "$RELEASE" = "openwrt" ] && \
 	if ! nft list chain inet fw4 forward | grep 'ct status dnat' >/dev/null; then
 		HANDLE=$(nft -a list chain inet fw4 forward | grep jump | awk 'NR==1{print$NF}')
 		nft insert rule inet fw4 forward handle $HANDLE ct status dnat counter accept
@@ -148,6 +149,7 @@ fi
 # BT 应用运行在路由器上，使用 redirect
 if [ $DNAT = 2 ]; then
 	nft add rule ip STUN BTDNAT_$L4PROTO $IIFNAME $L4PROTO dport $LANPORT counter redirect to :$APPPORT
+	[ "$RELEASE" = "openwrt" ] && \
 	if ! nft list chain inet fw4 input | grep 'ct status dnat' >/dev/null; then
 		HANDLE=$(nft -a list chain inet fw4 input | grep jump | grep -v "tcp flags" | awk 'NR==1{print$NF}')
 		nft insert rule inet fw4 input handle $HANDLE ct status dnat counter accept
