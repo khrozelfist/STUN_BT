@@ -47,7 +47,7 @@ echo $L4PROTO $WANADDR:$WANPORT '->' $OWNADDR:$LANPORT '->' $APPADDR:$APPPORT $(
 [ $L4PROTO = udp ] && sleep 1 && \
 [ $(($(date +%s) - $(grep tcp $STUNIFO | awk '{print$NF}'))) -lt 2 ] && sleep 2
 
-# 初始化
+# 初始化 nftables
 nft add table ip STUN
 nft delete chain ip STUN BTTR 2>/dev/null
 nft create chain ip STUN BTTR { type filter hook postrouting priority filter \; }
