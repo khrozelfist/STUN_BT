@@ -96,9 +96,11 @@ nft add rule ip STUN BTTR_UDP @ih,64,32 1 @ih,768,16 $APPPORT @ih,768,16 set $SE
 # 先排除需要 UPnP 的情况
 DNAT=0
 for LANADDR in $(ip -4 a show dev br-lan | grep inet | awk '{print$2}' | awk -F '/' '{print$1}'); do
+	[ $DNAT = 1 ] && break
 	[ "$LANADDR" = $GWLADDR ] && DNAT=1
 done
 for LANADDR in $(nslookup -type=A $HOSTNAME | grep Address | grep -v :53 | awk '{print$2}'); do
+	[ $DNAT = 1 ] && break
 	[ "$LANADDR" = $GWLADDR ] && DNAT=1
 done
 [ $APPADDR = $GWLADDR ] && DNAT=2
