@@ -130,30 +130,34 @@ fi
 # 代理失败，则启用本机 UPnP
 [ $DNAT = 0 ] && (upnpc -i -e "STUN BT $L4PROTO $WANPORT->$LANPORT" -a @ $LANPORT $LANPORT $L4PROTO; DNAT=4)
 
-# 初始化 DNAT 链
+# 初始化 DNAT
 if [ $DNAT != 3 ]; then
 	[ -z "$WANTCP" ] && nft delete chain ip STUN BTDNAT_tcp 2>/dev/null
 	[ -z "$WANUDP" ] && nft delete chain ip STUN BTDNAT_udp 2>/dev/null
 	nft delete chain ip STUN BTDNAT_$L4PROTO 2>/dev/null
 	nft create chain ip STUN BTDNAT_$L4PROTO { type nat hook prerouting priority dstnat \; }
 fi
+if [ "$RELEASE" = "openwrt" ]; then
+	if uci show firewall | grep =redirect >/dev/null; then
+		i=0
+		for CONFIG in $(uci show firewall | grep =redirect | awk -F = '{print$1}'); do
+			[ "$(uci -q get $CONFIG.enabled)" = 0 ] && let i++
+		done
+		[ $(uci show firewall | grep =redirect | wc -l) -gt $i ] && RULE=1
+	fi
+	if [ "$RULE" != 1 ]; then
+		uci delete firewall.foo 2>/dev/null
+		uci set firewall.foo=redirect
+		uci set firewall.foo.name=foo
+		uci set firewall.foo.src=wan
+		uci set firewall.foo.mark=$RANDOM
+		uci commit firewall
+		/etc/init.d/firewall reload >/dev/null 2>&1
+	fi
+fi
 
 # BT 应用运行在路由器下，使用 dnat
-if [ $DNAT = 1 ] || [ $DNAT = 4 ]; then
-	nft add rule ip STUN BTDNAT_$L4PROTO $IIFNAME $L4PROTO dport $LANPORT counter dnat ip to $APPADDR:$APPPORT
-	[ "$RELEASE" = "openwrt" ] && \
-	if ! nft list chain inet fw4 forward | grep 'ct status dnat' >/dev/null; then
-		HANDLE=$(nft -a list chain inet fw4 forward | grep jump | awk 'NR==1{print$NF}')
-		nft insert rule inet fw4 forward handle $HANDLE ct status dnat counter accept
-	fi
-fi
+[ $DNAT = 1 ] || [ $DNAT = 4 ] && nft add rule ip STUN BTDNAT_$L4PROTO $IIFNAME $L4PROTO dport $LANPORT counter dnat ip to $APPADDR:$APPPORT
 
 # BT 应用运行在路由器上，使用 redirect
-if [ $DNAT = 2 ]; then
-	nft add rule ip STUN BTDNAT_$L4PROTO $IIFNAME $L4PROTO dport $LANPORT counter redirect to :$APPPORT
-	[ "$RELEASE" = "openwrt" ] && \
-	if ! nft list chain inet fw4 input | grep 'ct status dnat' >/dev/null; then
-		HANDLE=$(nft -a list chain inet fw4 input | grep jump | grep -v "tcp flags" | awk 'NR==1{print$NF}')
-		nft insert rule inet fw4 input handle $HANDLE ct status dnat counter accept
-	fi
-fi
+[ $DNAT = 2 ] && nft add rule ip STUN BTDNAT_$L4PROTO $IIFNAME $L4PROTO dport $LANPORT counter redirect to :$APPPORT
