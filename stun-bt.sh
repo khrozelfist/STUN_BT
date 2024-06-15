@@ -130,34 +130,78 @@ fi
 # 代理失败，则启用本机 UPnP
 [ $DNAT = 0 ] && (upnpc -i -e "STUN BT $L4PROTO $WANPORT->$LANPORT" -a @ $LANPORT $LANPORT $L4PROTO; DNAT=4)
 
-# 初始化 DNAT
+# 清理不需要的规则
+if [ $DNAT = 3 ]; then
+	nft delete chain ip STUN BTDNAT_tcp 2>/dev/null
+	nft delete chain ip STUN BTDNAT_udp 2>/dev/null
+	[ "$RELEASE" = "openwrt" ] && uci -q delete firewall.BTDNAT_tcp
+	[ "$RELEASE" = "openwrt" ] && uci -q delete firewall.BTDNAT_udp
+fi
 if [ $DNAT != 3 ]; then
+	[ -z "$WANTCP" ] && uci -q delete firewall.BTDNAT_tcp
+	[ -z "$WANUDP" ] && uci -q delete firewall.BTDNAT_udp
 	[ -z "$WANTCP" ] && nft delete chain ip STUN BTDNAT_tcp 2>/dev/null
 	[ -z "$WANUDP" ] && nft delete chain ip STUN BTDNAT_udp 2>/dev/null
-	nft delete chain ip STUN BTDNAT_$L4PROTO 2>/dev/null
-	nft create chain ip STUN BTDNAT_$L4PROTO { type nat hook prerouting priority dstnat \; }
 fi
-if [ "$RELEASE" = "openwrt" ]; then
-	if uci show firewall | grep =redirect >/dev/null; then
-		i=0
-		for CONFIG in $(uci show firewall | grep =redirect | awk -F = '{print$1}'); do
-			[ "$(uci -q get $CONFIG.enabled)" = 0 ] && let i++
-		done
-		[ $(uci show firewall | grep =redirect | wc -l) -gt $i ] && RULE=1
-	fi
-	if [ "$RULE" != 1 ]; then
-		uci delete firewall.foo 2>/dev/null
-		uci set firewall.foo=redirect
-		uci set firewall.foo.name=foo
-		uci set firewall.foo.src=wan
-		uci set firewall.foo.mark=$RANDOM
+
+# 选择使用 uci 或 nft
+SETDNAT() {
+	if [ -n "$*" ]; then
+		nft delete chain ip STUN BTDNAT_tcp 2>/dev/null
+		nft delete chain ip STUN BTDNAT_udp 2>/dev/null
+		uci -q delete firewall.STUN_foo
+		uci -q delete firewall.BTDNAT_$L4PROTO
+		uci set firewall.BTDNAT_$L4PROTO=redirect
+		uci set firewall.BTDNAT_$L4PROTO.name=BT_${L4PROTO}_$1'->'$2
+		uci set firewall.BTDNAT_$L4PROTO.src=wan
+		uci set firewall.BTDNAT_$L4PROTO.proto=$L4PROTO
+		uci set firewall.BTDNAT_$L4PROTO.src_dport=$1
+		uci set firewall.BTDNAT_$L4PROTO.dest_port=$2
+		uci -q set firewall.BTDNAT_$L4PROTO.dest_ip=$3
 		uci commit firewall
-		/etc/init.d/firewall reload >/dev/null 2>&1
+		fw4 -q reload
+		UCI=1
+	else
+		nft delete chain ip STUN BTDNAT_$L4PROTO 2>/dev/null
+		nft create chain ip STUN BTDNAT_$L4PROTO { type nat hook prerouting priority dstnat \; }
 	fi
-fi
+	if [ "$RELEASE" = "openwrt" ] && [ "$UCI" != 1 ]; then
+		uci -q delete firewall.STUN_foo && RELOAD=1
+		uci -q delete firewall.BTDNAT_tcp && RELOAD=1
+		uci -q delete firewall.BTDNAT_udp && RELOAD=1
+		if uci show firewall | grep =redirect >/dev/null; then
+			i=0
+			for CONFIG in $(uci show firewall | grep =redirect | awk -F = '{print$1}'); do
+				[ "$(uci -q get $CONFIG.enabled)" = 0 ] && let i++
+			done
+			[ $(uci show firewall | grep =redirect | wc -l) -gt $i ] && RULE=1
+		fi
+		if [ "$RULE" != 1 ]; then
+			uci set firewall.STUN_foo=redirect
+			uci set firewall.STUN_foo.name=STUN_foo
+			uci set firewall.STUN_foo.src=wan
+			uci set firewall.STUN_foo.mark=$RANDOM
+			RELOAD=1
+		fi
+		uci commit firewall
+		[ "$RELOAD" = 1 ] && fw4 -q reload
+	fi
+}
 
 # BT 应用运行在路由器下，使用 dnat
-[ $DNAT = 1 ] || [ $DNAT = 4 ] && nft add rule ip STUN BTDNAT_$L4PROTO $IIFNAME $L4PROTO dport $LANPORT counter dnat ip to $APPADDR:$APPPORT
+[ $DNAT = 1 ] || [ $DNAT = 4 ] && \
+if [ "$RELEASE" = "openwrt" ] && [ -z "$IFNAME" ]; then
+	SETDNAT $LANPORT $APPPORT $APPADDR
+else
+	SETDNAT
+	nft add rule ip STUN BTDNAT_$L4PROTO $IIFNAME $L4PROTO dport $LANPORT counter dnat ip to $APPADDR:$APPPORT
+fi
 
 # BT 应用运行在路由器上，使用 redirect
-[ $DNAT = 2 ] && nft add rule ip STUN BTDNAT_$L4PROTO $IIFNAME $L4PROTO dport $LANPORT counter redirect to :$APPPORT
+[ $DNAT = 2 ] && \
+if [ "$RELEASE" = "openwrt" ] && [ -z "$IFNAME" ]; then
+	SETDNAT $LANPORT $APPPORT
+else
+	SETDNAT
+	nft add rule ip STUN BTDNAT_$L4PROTO $IIFNAME $L4PROTO dport $LANPORT counter redirect to :$APPPORT
+fi
