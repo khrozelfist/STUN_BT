@@ -73,7 +73,7 @@ nft add chain ip STUN BTTR_HTTP
 nft flush chain ip STUN BTTR_HTTP
 nft insert rule ip STUN BTTR $OIFNAME ip saddr $APPADDR ip daddr . tcp dport @BTTR_HTTP counter goto BTTR_HTTP
 nft add rule ip STUN BTTR $OIFNAME ip saddr $APPADDR meta l4proto tcp @ih,0,112 0x474554202f616e6e6f756e63653f add @BTTR_HTTP { ip daddr . tcp dport } counter goto BTTR_HTTP
-for OFFSET in $(seq 768 16 1040); do
+for OFFSET in $(seq 768 16 1056); do
 	nft add rule ip STUN BTTR_HTTP @ih,$OFFSET,40 0x706f72743d @ih,$(($OFFSET+32)),48 set $SETSTR update @BTTR_HTTP { ip daddr . tcp dport } counter accept
 done
 
