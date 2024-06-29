@@ -51,8 +51,8 @@ echo $L4PROTO $WANADDR:$WANPORT '->' $OWNADDR:$LANPORT '->' $APPADDR:$APPPORT $(
 
 # 初始化 nftables
 nft add table ip STUN
-nft delete chain ip STUN BTTR 2>/dev/null
-nft create chain ip STUN BTTR { type filter hook postrouting priority filter \; }
+nft add chain ip STUN BTTR { type filter hook postrouting priority filter \; }
+nft flush chain ip STUN BTTR
 WANTCP=$(grep tcp $STUNIFO | awk -F ':| ' '{print$3}')
 WANUDP=$(grep udp $STUNIFO | awk -F ':| ' '{print$3}')
 if [ -n "$IFNAME" ]; then
@@ -73,11 +73,11 @@ elif [ -n "$WANUDP" ]; then
 fi
 nft add set ip STUN BTTR_HTTP "{ type ipv4_addr . inet_service; flags dynamic; timeout 1h; }"
 nft add chain ip STUN BTTR_HTTP
+nft insert rule ip STUN BTTR ip daddr . tcp dport @BTTR_HTTP goto BTTR_HTTP
+nft add rule ip STUN BTTR meta l4proto tcp @ih,0,112 0x474554202f616e6e6f756e63653f add @BTTR_HTTP { ip daddr . tcp dport } goto BTTR_HTTP
 for HANDLE in $(nft -a list chain ip STUN BTTR_HTTP | grep \"$OWNNAME\" | awk '{print$NF}'); do
 	nft delete rule ip STUN BTTR_HTTP handle $HANDLE
 done
-nft insert rule ip STUN BTTR ip daddr . tcp dport @BTTR_HTTP goto BTTR_HTTP
-nft add rule ip STUN BTTR meta l4proto tcp @ih,0,112 0x474554202f616e6e6f756e63653f add @BTTR_HTTP { ip daddr . tcp dport } goto BTTR_HTTP
 for OFFSET in $(seq 768 16 1056); do
 	nft add rule ip STUN BTTR_HTTP $OIFNAME ip saddr $APPADDR @ih,$OFFSET,80 $STRAPP @ih,$(($OFFSET+32)),48 set $SETSTR update @BTTR_HTTP { ip daddr . tcp dport } counter accept comment $OWNNAME
 done
