@@ -2,7 +2,7 @@
 IFNAME=			# 指定接口，可留空；仅在多 WAN 时需要；拨号接口的格式为 "pppoe-wancm"
 GWLADDR=192.168.1.1	# 主路由 LAN 的 IPv4 地址
 APPADDR=192.168.1.168	# 下载设备的 IPv4 地址，允许主路由或旁路由本身运行 BT 应用
-APPPORT=12345		# BT 应用的监听端口，HTTP 改包要求 5 位数端口
+APPPORT=12345		# BT 应用程序的监听端口，HTTP 改包要求 5 位数端口
 
 WANADDR=$1
 WANPORT=$2
@@ -11,9 +11,9 @@ L4PROTO=$5
 OWNADDR=$6
 
 OWNNAME=$(echo $0 | awk -F / '{print$NF}' | awk -F . '{print$1}')
+RELEASE=$(grep ^ID= /etc/os-release | awk -F '=' '{print$2}' | tr -d \")
 STUNIFO=/tmp/$OWNNAME.info
 OLDPORT=$(grep $L4PROTO $STUNIFO 2>/dev/null | awk -F ':| ' '{print$3}')
-RELEASE=$(grep ^ID= /etc/os-release | awk -F '=' '{print$2}' | tr -d \")
 
 # 判断 TCP 或 UDP 的穿透是否启用
 # 清理穿透信息中没有运行的协议
@@ -44,6 +44,7 @@ esac
 # 更新保存穿透信息
 sed -i '/'$L4PROTO'/d' $STUNIFO
 echo $L4PROTO $WANADDR:$WANPORT '->' $OWNADDR:$LANPORT '->' $APPADDR:$APPPORT $(date +%s) >>$STUNIFO
+echo $(date) $L4PROTO $WANADDR:$WANPORT '->' $OWNADDR:$LANPORT '->' $APPADDR:$APPPORT >>/tmp/$OWNNAME.log
 
 # 防止脚本同时操作 nftables 导致冲突
 [ $L4PROTO = udp ] && sleep 1 && \
@@ -62,14 +63,14 @@ fi
 
 # HTTP Tracker
 STRAPP=0x706f72743d$(printf $APPPORT | xxd -p)
-STRTCP=$(printf 30$(printf "$WANTCP" | xxd -p) | tail -c 10)
-STRUDP=$(printf 30$(printf "$WANUDP" | xxd -p) | tail -c 10)
+STRTCP=0x3d$(printf 30$(printf "$WANTCP" | xxd -p) | tail -c 10)
+STRUDP=0x3d$(printf 30$(printf "$WANUDP" | xxd -p) | tail -c 10)
 if [ -n "$WANTCP" ] && [ -n "$WANUDP" ]; then
-	SETSTR="numgen inc mod 2 map { 0 : 0x3d$STRTCP, 1 : 0x3d$STRUDP }"
+	SETSTR="numgen inc mod 2 map { 0 : $STRTCP, 1 : $STRUDP }"
 elif [ -n "$WANTCP" ]; then
-	SETSTR=0x3d$STRTCP
+	SETSTR=$STRTCP
 elif [ -n "$WANUDP" ]; then
-	SETSTR=0x3d$STRUDP
+	SETSTR=$STRUDP
 fi
 nft add set ip STUN BTTR_HTTP "{ type ipv4_addr . inet_service; flags dynamic; timeout 1h; }"
 nft add chain ip STUN BTTR_HTTP
