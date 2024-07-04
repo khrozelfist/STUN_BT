@@ -1,8 +1,8 @@
 # 从 Lucky 自定义命令中传递参数
-IFNAME=$7				# 指定接口，可留空；仅在多 WAN 时需要；拨号接口的格式为 "pppoe-wancm"
-GWLADDR=192.168.1.1		# 主路由 LAN 的 IPv4 地址
-APPADDR=192.168.1.168	# 下载设备的 IPv4 地址，允许主路由或旁路由本身运行 BT 应用
-APPPORT=12345			# BT 应用程序的监听端口，HTTP 改包要求 5 位数端口
+IFNAME=$10	# 指定接口，可留空；仅在多 WAN 时需要；拨号接口的格式为 "pppoe-wancm"
+GWLADDR=$7	# 主路由 LAN 的 IPv4 地址
+APPADDR=$8	# 下载设备的 IPv4 地址，允许主路由或旁路由本身运行 BT 应用
+APPPORT=$9	# BT 应用程序的监听端口，HTTP 改包要求 5 位数端口
 
 WANADDR=$1
 WANPORT=$2
