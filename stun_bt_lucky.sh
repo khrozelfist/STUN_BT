@@ -1,16 +1,16 @@
 # 从 Lucky 自定义命令中传递参数
-IFNAME=$10	# 指定接口，可留空；仅在多 WAN 时需要；拨号接口的格式为 "pppoe-wancm"
-GWLADDR=$7	# 主路由 LAN 的 IPv4 地址
-APPADDR=$8	# 下载设备的 IPv4 地址，允许主路由或旁路由本身运行 BT 应用
-APPPORT=$9	# BT 应用程序的监听端口，HTTP 改包要求 5 位数端口
+IFNAME=$9	# 指定接口，可留空；仅在多 WAN 时需要；拨号接口的格式为 "pppoe-wancm"
+GWLADDR=$6	# 主路由 LAN 的 IPv4 地址
+APPADDR=$7	# 下载设备的 IPv4 地址，允许主路由或旁路由本身运行 BT 应用
+APPPORT=$8	# BT 应用程序的监听端口，HTTP 改包要求 5 位数端口
 
 WANADDR=$1
 WANPORT=$2
-LANPORT=$4
-L4PROTO=$5
+LANPORT=$3
+L4PROTO=$4
 OWNADDR=
 
-OWNNAME=$(echo $6 | sed 's/[[:punct:]]/_/g')
+OWNNAME=$(echo $5 | sed 's/[[:punct:]]/_/g')
 RELEASE=$(grep ^ID= /etc/os-release | awk -F '=' '{print$2}' | tr -d \")
 STUNIFO=/tmp/$OWNNAME.info
 OLDPORT=$(grep $L4PROTO $STUNIFO 2>/dev/null | awk -F ':| ' '{print$3}')
