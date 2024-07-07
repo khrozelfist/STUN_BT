@@ -1,7 +1,7 @@
 # 以下变量需按要求填写
 IFNAME=			# 指定接口，可留空；仅在多 WAN 时需要；拨号接口的格式为 "pppoe-wancm"
-GWLADDR=192.168.1.1	# 主路由 LAN 的 IPv4 地址
-APPADDR=192.168.1.168	# 下载设备的 IPv4 地址，允许主路由或旁路由本身运行 BT 应用
+GWLADDR=192.168.8.1	# 主路由 LAN 的 IPv4 地址
+APPADDR=192.168.8.168	# 下载设备的 IPv4 地址，允许主路由或旁路由本身运行 BT 应用
 APPPORT=12345		# BT 应用程序的监听端口，HTTP 改包要求 5 位数端口
 
 WANADDR=$1
@@ -10,7 +10,7 @@ LANPORT=$4
 L4PROTO=$5
 OWNADDR=$6
 
-OWNNAME=$(echo $0 | awk -F / '{print$NF}' | awk -F . '{print$1}')
+OWNNAME=$(echo $0 | awk -F / '{print$NF}' | awk -F . '{print$1}' | sed 's/[[:punct:]]/_/g')
 RELEASE=$(grep ^ID= /etc/os-release | awk -F '=' '{print$2}' | tr -d \")
 STUNIFO=/tmp/$OWNNAME.info
 OLDPORT=$(grep $L4PROTO $STUNIFO 2>/dev/null | awk -F ':| ' '{print$3}')
@@ -42,7 +42,7 @@ case $RELEASE in
 esac
 
 # 更新保存穿透信息
-sed -i '/'$L4PROTO'/d' $STUNIFO
+sed -i '/'$L4PROTO'/d' $STUNIFO 2>/dev/null
 echo $L4PROTO $WANADDR:$WANPORT '->' $OWNADDR:$LANPORT '->' $APPADDR:$APPPORT $(date +%s) >>$STUNIFO
 echo $(date) $L4PROTO $WANADDR:$WANPORT '->' $OWNADDR:$LANPORT '->' $APPADDR:$APPPORT >>/tmp/$OWNNAME.log
 
@@ -75,12 +75,12 @@ fi
 nft add set ip STUN BTTR_HTTP "{ type ipv4_addr . inet_service; flags dynamic; timeout 1h; }"
 nft add chain ip STUN BTTR_HTTP
 nft insert rule ip STUN BTTR ip daddr . tcp dport @BTTR_HTTP goto BTTR_HTTP
-nft add rule ip STUN BTTR meta l4proto tcp @ih,0,112 0x474554202f616e6e6f756e63653f add @BTTR_HTTP { ip daddr . tcp dport } goto BTTR_HTTP
+nft add rule ip STUN BTTR meta l4proto tcp @th,160,112 0x474554202f616e6e6f756e63653f add @BTTR_HTTP { ip daddr . tcp dport } goto BTTR_HTTP
 for HANDLE in $(nft -a list chain ip STUN BTTR_HTTP | grep \"$OWNNAME\" | awk '{print$NF}'); do
 	nft delete rule ip STUN BTTR_HTTP handle $HANDLE
 done
-for OFFSET in $(seq 768 16 1056); do
-	nft add rule ip STUN BTTR_HTTP $OIFNAME ip saddr $APPADDR @ih,$OFFSET,80 $STRAPP @ih,$(($OFFSET+32)),48 set $SETSTR update @BTTR_HTTP { ip daddr . tcp dport } counter accept comment $OWNNAME
+for OFFSET in $(seq 928 16 1216); do
+	nft insert rule ip STUN BTTR_HTTP $OIFNAME ip saddr $APPADDR @th,$OFFSET,80 $STRAPP @th,$(($OFFSET+32)),48 set $SETSTR update @BTTR_HTTP { ip daddr . tcp dport } counter accept comment "$OWNNAME"
 done
 
 # UDP Tracker
@@ -94,9 +94,9 @@ fi
 nft add set ip STUN BTTR_UDP "{ type ipv4_addr . inet_service; flags dynamic; timeout 1h; }"
 nft add chain ip STUN BTTR_UDP
 nft insert rule ip STUN BTTR ip daddr . udp dport @BTTR_UDP goto BTTR_UDP
-nft add rule ip STUN BTTR meta l4proto udp @ih,0,64 0x41727101980 @ih,64,32 0 add @BTTR_UDP { ip daddr . udp dport } goto BTTR_UDP
+nft add rule ip STUN BTTR meta l4proto udp @th,64,64 0x41727101980 @th,128,32 0 add @BTTR_UDP { ip daddr . udp dport } goto BTTR_UDP
 nft delete rule ip STUN BTTR_UDP handle $(nft -a list chain ip STUN BTTR_UDP 2>/dev/null | grep \"$OWNNAME\" | awk '{print$NF}') 2>/dev/null
-nft add rule ip STUN BTTR_UDP $OIFNAME ip saddr $APPADDR @ih,64,32 1 @ih,768,16 $APPPORT @ih,768,16 set $SETNUM update @BTTR_UDP { ip daddr . udp dport } counter accept comment $OWNNAME
+nft insert rule ip STUN BTTR_UDP $OIFNAME ip saddr $APPADDR @th,128,32 1 @th,832,16 $APPPORT @th,832,16 set $SETNUM update @BTTR_UDP { ip daddr . udp dport } counter accept comment "$OWNNAME"
 
 # 判断脚本运行的环境，选择 DNAT 方式
 # 先排除需要 UPnP 的情况
@@ -138,45 +138,22 @@ fi
 
 # 清理不需要的规则
 if [ $DNAT = 3 ]; then
-	[ "$RELEASE" = "openwrt" ] && uci -q delete firewall.${OWNNAME}_tcp
-	[ "$RELEASE" = "openwrt" ] && uci -q delete firewall.${OWNNAME}_udp
 	nft delete rule ip STUN DNAT handle $(nft -a list chain ip STUN DNAT 2>/dev/null | grep \"$OWNNAME\" | grep tcp | awk '{print$NF}') 2>/dev/null
 	nft delete rule ip STUN DNAT handle $(nft -a list chain ip STUN DNAT 2>/dev/null | grep \"$OWNNAME\" | grep udp | awk '{print$NF}') 2>/dev/null
 fi
 if [ $DNAT != 3 ]; then
-	[ -z "$WANTCP" ] && uci -q delete firewall.${OWNNAME}_tcp
-	[ -z "$WANUDP" ] && uci -q delete firewall.${OWNNAME}_udp
 	[ -z "$WANTCP" ] && \
 	nft delete rule ip STUN DNAT handle $(nft -a list chain ip STUN DNAT 2>/dev/null | grep \"$OWNNAME\" | grep tcp | awk '{print$NF}') 2>/dev/null
 	[ -z "$WANUDP" ] && \
 	nft delete rule ip STUN DNAT handle $(nft -a list chain ip STUN DNAT 2>/dev/null | grep \"$OWNNAME\" | grep udp | awk '{print$NF}') 2>/dev/null
 fi
 
-# 选择使用 uci 或 nft
+# 初始化 DNAT
 SETDNAT() {
-	if [ -n "$*" ]; then
-		nft delete rule ip STUN DNAT handle $(nft -a list chain ip STUN DNAT 2>/dev/null | grep \"$OWNNAME\" | grep tcp | awk '{print$NF}') 2>/dev/null
-		nft delete rule ip STUN DNAT handle $(nft -a list chain ip STUN DNAT 2>/dev/null | grep \"$OWNNAME\" | grep udp | awk '{print$NF}') 2>/dev/null
+	nft add chain ip STUN DNAT { type nat hook prerouting priority dstnat \; }
+	nft delete rule ip STUN DNAT handle $(nft -a list chain ip STUN DNAT 2>/dev/null | grep \"$OWNNAME\" | grep $L4PROTO | awk '{print$NF}') 2>/dev/null
+	if [ "$RELEASE" = "openwrt" ]; then
 		uci -q delete firewall.stun_foo
-		uci -q delete firewall.${OWNNAME}_$L4PROTO
-		uci set firewall.${OWNNAME}_$L4PROTO=redirect
-		uci set firewall.${OWNNAME}_$L4PROTO.name=${OWNNAME}_${L4PROTO}_$1'->'$2
-		uci set firewall.${OWNNAME}_$L4PROTO.src=wan
-		uci set firewall.${OWNNAME}_$L4PROTO.proto=$L4PROTO
-		uci set firewall.${OWNNAME}_$L4PROTO.src_dport=$1
-		uci set firewall.${OWNNAME}_$L4PROTO.dest_port=$2
-		uci -q set firewall.${OWNNAME}_$L4PROTO.dest_ip=$3
-		uci commit firewall
-		fw4 -q reload
-		UCI=1
-	else
-		nft add chain ip STUN DNAT { type nat hook prerouting priority dstnat \; }
-		nft delete rule ip STUN DNAT handle $(nft -a list chain ip STUN DNAT 2>/dev/null | grep \"$OWNNAME\" | grep $L4PROTO | awk '{print$NF}') 2>/dev/null
-	fi
-	if [ "$RELEASE" = "openwrt" ] && [ "$UCI" != 1 ]; then
-		uci -q delete firewall.stun_foo && RELOAD=1
-		uci -q delete firewall.${OWNNAME}_tcp && RELOAD=1
-		uci -q delete firewall.${OWNNAME}_udp && RELOAD=1
 		if uci show firewall | grep =redirect >/dev/null; then
 			i=0
 			for CONFIG in $(uci show firewall | grep =redirect | awk -F = '{print$1}'); do
@@ -199,18 +176,10 @@ SETDNAT() {
 
 # BT 应用运行在路由器下，使用 dnat
 [ $DNAT = 1 ] || [ $DNAT = 4 ] && \
-if [ "$RELEASE" = "openwrt" ] && [ -z "$IFNAME" ]; then
-	SETDNAT $LANPORT $APPPORT $APPADDR
-else
-	SETDNAT
-	nft add rule ip STUN DNAT $IIFNAME $L4PROTO dport $LANPORT counter dnat ip to $APPADDR:$APPPORT comment $OWNNAME
-fi
+SETDNAT && \
+nft insert rule ip STUN DNAT $IIFNAME $L4PROTO dport $LANPORT counter dnat ip to $APPADDR:$APPPORT comment "$OWNNAME"
 
 # BT 应用运行在路由器上，使用 redirect
 [ $DNAT = 2 ] && \
-if [ "$RELEASE" = "openwrt" ] && [ -z "$IFNAME" ]; then
-	SETDNAT $LANPORT $APPPORT
-else
-	SETDNAT
-	nft add rule ip STUN DNAT $IIFNAME $L4PROTO dport $LANPORT counter redirect to :$APPPORT comment $OWNNAME
-fi
+SETDNAT && \
+nft insert rule ip STUN DNAT $IIFNAME $L4PROTO dport $LANPORT counter redirect to :$APPPORT comment "$OWNNAME"
